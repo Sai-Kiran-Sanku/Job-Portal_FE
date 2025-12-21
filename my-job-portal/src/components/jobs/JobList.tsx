@@ -1,7 +1,7 @@
 'use client'
 import React, { useState, useMemo } from "react";
-import { useAppDispatch, useAppSelector } from "@/lib/Hooks/useRedux";
-import { fetchJobs } from "@/lib/Slice/jobSlice";
+import { useAppDispatch, useAppSelector } from "#/lib/hooks/useRedux";
+import { fetchJobs } from "#/store/slices/jobSlice";
 import { MdOutlineDescription, MdLocationOn, MdWork } from "react-icons/md";
 import {
   Badge,
@@ -21,7 +21,7 @@ import {
 } from "@chakra-ui/react";
 import { useEffect } from "react";
 import JobSearch from "./JobSearch";
-import mockjobs from "./data";
+import mockjobs from "../../mock/data";
 
 const JobList = () => {
   const dispatch = useAppDispatch();

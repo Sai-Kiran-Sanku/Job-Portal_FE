@@ -19,8 +19,11 @@ import {
 import Header from '@/components/layout/Header';
 import { ColorModeButton } from '@/components/ui/color-mode';
 
+import AuthGuard from '@/components/auth/AuthGuard'
+
 export default function DashboardPage() {
   return (
+    <AuthGuard>
     <Box minH="100vh">
       <Box position="absolute" top={4} right={4}>
         <ColorModeButton />
@@ -109,6 +112,5 @@ export default function DashboardPage() {
           </Card.Root>
         </VStack>
       </Container>
-    </Box>
-  );
+    </Box>    </AuthGuard>  );
 }

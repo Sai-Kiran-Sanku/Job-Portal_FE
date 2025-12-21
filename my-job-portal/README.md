@@ -15,6 +15,31 @@ A modern, full-featured job portal built with Next.js 15, React 19, TypeScript, 
 
 ## 📁 Project Structure
 
+## Local environment
+
+Create a `.env.local` file at the project root (not committed) and add your backend URL:
+
+```
+API_URL=http://localhost:8000
+```
+
+Use the provided API route proxies under `/api/proxy/*` so the client never directly exposes your backend URL. The project includes a catch-all proxy at `/api/proxy/[...path]` which forwards requests to the backend (see `.env.local.example` for `API_URL` and optional `PROXY_ALLOWLIST`).
+
+Authentication & route protection
+
+- The app adds an `AuthContext` (client) and server `middleware` to protect routes.
+- Middleware checks for an `access_token` cookie and redirects unauthenticated users from protected pages (`/dashboard`, `/jobs`) to `/login` (with a `from` param).
+- Login currently stores `access_token` in `localStorage` and sets a fallback cookie so middleware can operate until the backend sets a secure httpOnly cookie. For best security, prefer the backend to set an httpOnly cookie on login (the proxy forwards `set-cookie`).
+- Client-side protections (AuthGuard) are added to `/dashboard` and `/jobs` to avoid flash-of-unauthenticated content.
+
+Testing locally
+
+1. Start backend and frontend.
+2. POST to `/api/proxy/auth/login` to get an `access_token` and confirm the app sets `localStorage` and a cookie.
+3. Visit `/dashboard` — you should be redirected to `/login` if not authenticated and allowed into `/dashboard` if authenticated.
+
+
+
 ```
 my-job-portal/
 ├── src/
