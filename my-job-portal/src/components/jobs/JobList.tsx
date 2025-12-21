@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useMemo } from "react";
-import { useAppDispatch, useAppSelector } from "#/lib/hooks/useRedux";
+import { useAppDispatch, useAppSelector } from "@/lib/hooks/useRedux";
 import { fetchJobs } from "#/store/slices/jobSlice";
 import { MdOutlineDescription, MdLocationOn, MdWork } from "react-icons/md";
 import {
