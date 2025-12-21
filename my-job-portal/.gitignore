@@ -17,6 +17,9 @@
 /.next/
 /out/
 
+# local/temporary server artifacts
+/server/
+
 # production
 /build
 

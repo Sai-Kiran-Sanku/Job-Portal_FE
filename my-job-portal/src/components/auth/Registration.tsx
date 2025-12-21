@@ -5,6 +5,9 @@ import { FileUpload } from "@chakra-ui/react"
 import { HiUpload } from "react-icons/hi"
 import { PasswordInput, PasswordStrengthMeter } from "@/components/ui/password-input"
 import { useColorModeValue } from "@/components/ui/color-mode"
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/context/AuthContext"
 
 interface FormValues {
   firstName: string
@@ -24,12 +27,67 @@ const Registration = () => {
 
   const password = watch("password", "")
 
-  const onSubmit = handleSubmit((data) => {
-    console.log(data)
-    // Add registration logic here
+  const [loading, setLoading] = useState(false)
+  const [serverMessage, setServerMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+  const router = useRouter()
+  const { token } = useAuth()
+
+  // If already signed in, redirect away
+  useEffect(() => {
+    if (token) router.replace('/dashboard')
+  }, [token, router])
+
+  const normalizeMessage = (m: any): string => {
+    if (!m) return ""
+    if (typeof m === "string") return m
+    if (Array.isArray(m)) return m.map(normalizeMessage).join("; ")
+    if (typeof m === "object") {
+      if (typeof m.message === "string") return m.message
+      if (typeof m.detail === "string") return m.detail
+      if (typeof m.msg === "string") return m.msg
+      // flatten object values
+      const parts = Object.entries(m).map(([k, v]) => `${k}: ${normalizeMessage(v)}`)
+      return parts.join(" | ")
+    }
+    return String(m)
+  }
+
+  const onSubmit = handleSubmit(async (data) => {
+    setLoading(true)
+    setServerMessage(null)
+    try {
+      // Backend expects a JSON object in the request body (no form-data)
+      const payload = {
+        f_name: data.firstName,
+        l_name: data.lastName,
+        email: data.email,
+        password: data.password,
+      }
+
+      const res = await fetch("/api/proxy/auth/register", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+        credentials: "include",
+      })
+      console.log("Registration response status:", payload)
+      const json = await res.json().catch(() => null  )
+
+      if (!res.ok) {
+        const msg = json?.detail || json?.message || json || res.statusText || "Registration failed"
+        setServerMessage({ type: "error", text: normalizeMessage(msg) })
+        return
+      }
+
+      setServerMessage({ type: "success", text: "Account created Succesfully" })
+      router.push("/login")
+    } catch (err: any) {
+      setServerMessage({ type: "error", text: normalizeMessage(err?.message || err) })
+    } finally {
+      setLoading(false)
+    }
   })
 
-  // Color values for light and dark modes
   const labelColor = useColorModeValue('gray.900', 'gray.100')
   const linkColor = useColorModeValue('blue.600', 'blue.300')
 
@@ -43,10 +101,15 @@ const Registration = () => {
   return (
     <div style={containerStyle}>
       <Box p="12" shadow="lg" borderRadius="lg" borderWidth="1px">
+        {serverMessage && (
+          <Box mb={4} p={3} borderRadius="md" bg={serverMessage.type === 'error' ? 'red.50' : 'green.50'} color={serverMessage.type === 'error' ? 'red.800' : 'green.800'}>
+            {serverMessage.text}
+          </Box>
+        )}
         <form onSubmit={onSubmit}>
           <Stack gap={6} w="full" maxW="500px">
             {/* FileUpload */}
-            <Field.Root required>
+            {/* <Field.Root required>
               <Field.Label color={labelColor}>
                 Resume
                 <Field.RequiredIndicator />
@@ -61,7 +124,7 @@ const Registration = () => {
                 </FileUpload.Trigger>
                 <FileUpload.List showSize clearable />
               </FileUpload.Root>
-            </Field.Root>
+            </Field.Root> */}
 
             {/* Name Fields Group */}
             <HStack gap={4} w="full">
@@ -140,6 +203,7 @@ const Registration = () => {
               size="lg"
               colorScheme="blue"
               width="full"
+              loading={loading}
             >
               Create Account
             </Button>

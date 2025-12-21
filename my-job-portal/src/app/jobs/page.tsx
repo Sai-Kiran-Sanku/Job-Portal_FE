@@ -1,7 +1,12 @@
+import AuthGuard from '@/components/auth/AuthGuard';
 import JobList from '@/components/jobs/JobList';
 
 export default function JobsPage() {
-  return <JobList />;
+  return (
+    <AuthGuard>
+      <JobList />
+    </AuthGuard>
+  );
 }
 
 export const metadata = {
