@@ -4,7 +4,6 @@ import { Box, Flex } from "@chakra-ui/react";
 import { ColorModeButton } from "@/components/ui/color-mode";
 import Header from "@/components/layout/Header";
 import Hero from "@/components/layout/Hero";
-import JobList from "@/components/jobs/JobList";
 
 export default function Home() {
   return (
@@ -21,7 +20,6 @@ export default function Home() {
       <Hero />
       
       {/* Job List */}
-      <JobList />
     </Box>
   );
 }
