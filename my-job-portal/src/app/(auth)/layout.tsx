@@ -1,7 +1,6 @@
 'use client'
 import React from 'react';
 import { Box, Container, Heading, VStack } from '@chakra-ui/react';
-import Header from '@/components/layout/Header';
 import { ColorModeButton } from '@/components/ui/color-mode';
 
 interface AuthLayoutProps {
