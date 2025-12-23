@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useMemo } from "react";
-import { useAppDispatch } from "../../lib/hooks/useRedux";
+import { useAppDispatch } from "@/lib/hooks/useRedux";
 import { MdOutlineDescription, MdLocationOn, MdWork } from "react-icons/md";
 import {
   Badge,
