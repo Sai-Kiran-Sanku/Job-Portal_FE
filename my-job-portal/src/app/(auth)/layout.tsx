@@ -1,6 +1,6 @@
-'use client'
+'use client';
+
 import React from 'react';
-import { Box, Container, Heading, VStack } from '@chakra-ui/react';
 import { ColorModeButton } from '@/components/ui/color-mode';
 
 interface AuthLayoutProps {
@@ -9,11 +9,11 @@ interface AuthLayoutProps {
 
 export default function AuthLayout({ children }: AuthLayoutProps) {
   return (
-    <Box minH="100vh" bg="gray.50" _dark={{ bg: "gray.900" }}>
-      <Box position="absolute" top={4} right={4}>
+    <div className="min-h-screen bg-[var(--color-bg-secondary)]">
+      <div className="absolute right-4 top-4 z-10">
         <ColorModeButton />
-      </Box>
+      </div>
       {children}
-    </Box>
+    </div>
   );
 }

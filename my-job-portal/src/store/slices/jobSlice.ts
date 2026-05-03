@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
-import axios from "axios";
+import apiClient, { API_ENDPOINTS } from "@/lib/api";
 
 export interface Job {
   title: string;
@@ -26,9 +26,13 @@ const initialState: JobsState = {
 };
 
 // 🔹 Async thunk to fetch jobs
-export const fetchJobs = createAsyncThunk("jobs/fetchJobs", async () => {
-  const response = await axios.get<Job[]>("http://127.0.0.1:8000/jobs/jobs");
-  return response.data;
+export const fetchJobs = createAsyncThunk("jobs/fetchJobs", async (_, { rejectWithValue }) => {
+  try {
+    const response = await apiClient.get<Job[]>(API_ENDPOINTS.JOBS.LIST);
+    return response.data;
+  } catch (error: any) {
+    return rejectWithValue(error.response?.data?.message || "Failed to fetch jobs");
+  }
 });
 
 const jobsSlice = createSlice({

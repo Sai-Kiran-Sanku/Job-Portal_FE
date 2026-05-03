@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 const PUBLIC_FILE = /\.(.*)$/
-const PROTECTED_PREFIXES = ['/dashboard', '/jobs']
+const PROTECTED_PREFIXES = ['/dashboard']
 
 export function middleware(req: NextRequest) {
   const { nextUrl, cookies } = req
@@ -31,5 +31,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/jobs/:path*', '/login', '/register']
+  matcher: ['/dashboard/:path*', '/login', '/register'],
 }

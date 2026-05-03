@@ -1,25 +1,26 @@
-'use client'
+"use client";
 
-import { ChakraProvider, defaultSystem } from "@chakra-ui/react"
-import { Provider as ReduxProvider } from "react-redux"
-import { ColorModeProvider, type ColorModeProviderProps } from "./ui/color-mode"
-import { store } from "@/lib/store"
-import { AuthProvider } from "@/context/AuthContext"
+import { Provider as ReduxProvider } from "react-redux";
+import { ColorModeProvider, type ColorModeProviderProps } from "./ui/color-mode";
+import { store } from "@/lib/store";
+import { AuthProvider } from "@/context/AuthContext";
+import { JobsProvider } from "@/context/JobsContext";
+import ErrorBoundary from "./ErrorBoundary";
 
 interface ProvidersProps extends ColorModeProviderProps {
-  children: React.ReactNode
+  children: React.ReactNode;
 }
 
 export function Providers({ children, ...colorModeProps }: ProvidersProps) {
   return (
     <ReduxProvider store={store}>
-      <ChakraProvider value={defaultSystem}>
-        <ColorModeProvider {...colorModeProps}>
-          <AuthProvider>
-            {children}
-          </AuthProvider>
-        </ColorModeProvider>
-      </ChakraProvider>
+      <ColorModeProvider {...colorModeProps}>
+        <AuthProvider>
+          <JobsProvider>
+            <ErrorBoundary>{children}</ErrorBoundary>
+          </JobsProvider>
+        </AuthProvider>
+      </ColorModeProvider>
     </ReduxProvider>
-  )
+  );
 }

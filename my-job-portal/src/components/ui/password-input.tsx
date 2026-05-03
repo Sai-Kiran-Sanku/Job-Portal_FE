@@ -1,159 +1,92 @@
-"use client"
+"use client";
 
-import type {
-  ButtonProps,
-  GroupProps,
-  InputProps,
-  StackProps,
-} from "@chakra-ui/react"
-import {
-  Box,
-  HStack,
-  IconButton,
-  Input,
-  InputGroup,
-  Stack,
-  mergeRefs,
-  useControllableState,
-} from "@chakra-ui/react"
-import * as React from "react"
-import { LuEye, LuEyeOff } from "react-icons/lu"
+import * as React from "react";
+import { LuEye, LuEyeOff } from "react-icons/lu";
+import { cn } from "@/lib/cn";
 
-export interface PasswordVisibilityProps {
-  /**
-   * The default visibility state of the password input.
-   */
-  defaultVisible?: boolean
-  /**
-   * The controlled visibility state of the password input.
-   */
-  visible?: boolean
-  /**
-   * Callback invoked when the visibility state changes.
-   */
-  onVisibleChange?: (visible: boolean) => void
-  /**
-   * Custom icons for the visibility toggle button.
-   */
-  visibilityIcon?: { on: React.ReactNode; off: React.ReactNode }
+const inputClass =
+  "w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 py-2 pr-10 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]";
+
+export interface PasswordInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+  defaultVisible?: boolean;
+  visible?: boolean;
+  onVisibleChange?: (visible: boolean) => void;
 }
 
-export interface PasswordInputProps
-  extends InputProps,
-    PasswordVisibilityProps {
-  rootProps?: GroupProps
-}
+export const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputProps>(
+  function PasswordInput(
+    { className, defaultVisible, visible: visibleProp, onVisibleChange, disabled, ...rest },
+    ref,
+  ) {
+    const [uncontrolled, setUncontrolled] = React.useState(defaultVisible ?? false);
+    const isControlled = visibleProp !== undefined;
+    const visible = isControlled ? visibleProp : uncontrolled;
 
-export const PasswordInput = React.forwardRef<
-  HTMLInputElement,
-  PasswordInputProps
->(function PasswordInput(props, ref) {
-  const {
-    rootProps,
-    defaultVisible,
-    visible: visibleProp,
-    onVisibleChange,
-    visibilityIcon = { on: <LuEye />, off: <LuEyeOff /> },
-    ...rest
-  } = props
+    const setVisible = (v: boolean) => {
+      if (!isControlled) setUncontrolled(v);
+      onVisibleChange?.(v);
+    };
 
-  const [visible, setVisible] = useControllableState({
-    value: visibleProp,
-    defaultValue: defaultVisible || false,
-    onChange: onVisibleChange,
-  })
-
-  const inputRef = React.useRef<HTMLInputElement>(null)
-
-  return (
-    <InputGroup
-      endElement={
-        <VisibilityTrigger
-          disabled={rest.disabled}
+    return (
+      <div className="relative w-full">
+        <input
+          ref={ref}
+          type={visible ? "text" : "password"}
+          disabled={disabled}
+          className={cn(inputClass, className)}
+          {...rest}
+        />
+        <button
+          type="button"
+          tabIndex={-1}
+          disabled={disabled}
+          aria-label={visible ? "Hide password" : "Show password"}
+          className="absolute right-1 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)]"
           onPointerDown={(e) => {
-            if (rest.disabled) return
-            if (e.button !== 0) return
-            e.preventDefault()
-            setVisible(!visible)
+            if (disabled) return;
+            if (e.button !== 0) return;
+            e.preventDefault();
+            setVisible(!visible);
           }}
         >
-          {visible ? visibilityIcon.off : visibilityIcon.on}
-        </VisibilityTrigger>
-      }
-      {...rootProps}
-    >
-      <Input
-        {...rest}
-        ref={mergeRefs(ref, inputRef)}
-        type={visible ? "text" : "password"}
-      />
-    </InputGroup>
-  )
-})
-
-const VisibilityTrigger = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  function VisibilityTrigger(props, ref) {
-    return (
-      <IconButton
-        tabIndex={-1}
-        ref={ref}
-        me="-2"
-        aspectRatio="square"
-        size="sm"
-        variant="ghost"
-        height="calc(100% - {spacing.2})"
-        aria-label="Toggle password visibility"
-        {...props}
-      />
-    )
+          {visible ? <LuEyeOff className="size-4" /> : <LuEye className="size-4" />}
+        </button>
+      </div>
+    );
   },
-)
+);
 
-interface PasswordStrengthMeterProps extends StackProps {
-  max?: number
-  value: number
+export interface PasswordStrengthMeterProps extends React.HTMLAttributes<HTMLDivElement> {
+  max?: number;
+  value: number;
 }
 
-export const PasswordStrengthMeter = React.forwardRef<
-  HTMLDivElement,
-  PasswordStrengthMeterProps
->(function PasswordStrengthMeter(props, ref) {
-  const { max = 4, value, ...rest } = props
+export const PasswordStrengthMeter = React.forwardRef<HTMLDivElement, PasswordStrengthMeterProps>(
+  function PasswordStrengthMeter({ max = 4, value, className, ...rest }, ref) {
+    const percent = (value / max) * 100;
+    const { label, segmentClass } = strengthStyle(percent);
 
-  const percent = (value / max) * 100
-  const { label, colorPalette } = getColorPalette(percent)
+    return (
+      <div ref={ref} className={cn("flex w-full flex-col gap-1", className)} {...rest}>
+        <div className="flex w-full gap-1">
+          {Array.from({ length: max }).map((_, index) => (
+            <div
+              key={index}
+              className={cn(
+                "h-1 flex-1 rounded-sm bg-[var(--color-border)] transition-colors",
+                index < value && segmentClass,
+              )}
+            />
+          ))}
+        </div>
+        {label ? <span className="text-xs text-[var(--color-text-muted)]">{label}</span> : null}
+      </div>
+    );
+  },
+);
 
-  return (
-    <Stack align="flex-end" gap="1" ref={ref} {...rest}>
-      <HStack width="full" {...rest}>
-        {Array.from({ length: max }).map((_, index) => (
-          <Box
-            key={index}
-            height="1"
-            flex="1"
-            rounded="sm"
-            data-selected={index < value ? "" : undefined}
-            layerStyle="fill.subtle"
-            colorPalette="gray"
-            _selected={{
-              colorPalette,
-              layerStyle: "fill.solid",
-            }}
-          />
-        ))}
-      </HStack>
-      {label && <HStack textStyle="xs">{label}</HStack>}
-    </Stack>
-  )
-})
-
-function getColorPalette(percent: number) {
-  switch (true) {
-    case percent < 33:
-      return { label: "Low", colorPalette: "red" }
-    case percent < 66:
-      return { label: "Medium", colorPalette: "orange" }
-    default:
-      return { label: "High", colorPalette: "green" }
-  }
+function strengthStyle(percent: number) {
+  if (percent < 33) return { label: "Low", segmentClass: "bg-red-500" };
+  if (percent < 66) return { label: "Medium", segmentClass: "bg-amber-500" };
+  return { label: "High", segmentClass: "bg-emerald-600" };
 }
