@@ -35,6 +35,50 @@ function cleanJsonResponse(text: string): string {
   return text.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
 }
 
+function extractJsonObject(text: string): string {
+  const cleaned = cleanJsonResponse(text);
+  const firstBrace = cleaned.indexOf("{");
+
+  if (firstBrace === -1) {
+    return cleaned;
+  }
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = firstBrace; index < cleaned.length; index += 1) {
+    const char = cleaned[index];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = true;
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return cleaned.slice(firstBrace, index + 1);
+      }
+    }
+  }
+
+  return cleaned;
+}
+
 function summarizeError(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
@@ -43,14 +87,127 @@ function summarizeError(error: unknown): string {
   return String(error);
 }
 
-function parseAndValidate(text: string): ParsedJob {
-  const parsed = JSON.parse(cleanJsonResponse(text)) as ParsedJob;
+function normalizeJobType(value: unknown): ParsedJob["job_type"] {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase();
 
-  if (!parsed?.title || !parsed?.company) {
+  if (normalized.includes("part")) return "Part-time";
+  if (normalized.includes("contract")) return "Contract";
+  if (normalized.includes("remote")) return "Remote";
+  return "Full-time";
+}
+
+function toStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item).trim())
+      .filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    return value
+      .split(/\r?\n|,|;/)
+      .map((item) => item.replace(/^[-*]\s*/, "").trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+function toNullableNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const numeric = Number(value.replace(/[^\d.]/g, ""));
+    return Number.isFinite(numeric) ? numeric : null;
+  }
+
+  return null;
+}
+
+function normalizeParsedJob(input: unknown): ParsedJob {
+  const parsed = (input ?? {}) as Record<string, unknown>;
+  const title = String(parsed.title ?? "").trim();
+  const company = String(parsed.company ?? "").trim();
+
+  if (!title || !company) {
     throw new Error("Invalid parsed job response");
   }
 
-  return parsed;
+  const location = String(parsed.location ?? "").trim() || "Not specified";
+  const description = String(parsed.description ?? "").trim() || "No description provided.";
+  const responsibilities = toStringList(parsed.responsibilities);
+  const requirements = toStringList(parsed.requirements);
+  const tags = toStringList(parsed.tags).slice(0, 8);
+
+  return {
+    title,
+    company,
+    location,
+    job_type: normalizeJobType(parsed.job_type),
+    salary_min: toNullableNumber(parsed.salary_min),
+    salary_max: toNullableNumber(parsed.salary_max),
+    description,
+    apply_url: typeof parsed.apply_url === "string" && parsed.apply_url.trim()
+      ? parsed.apply_url.trim()
+      : null,
+    tags,
+    responsibilities,
+    requirements,
+  };
+}
+
+function parseAndValidate(payload: unknown): ParsedJob {
+  if (typeof payload === "string") {
+    const extracted = extractJsonObject(payload);
+    return normalizeParsedJob(JSON.parse(extracted));
+  }
+
+  return normalizeParsedJob(payload);
+}
+
+function extractMessageText(content: unknown): string {
+  if (typeof content === "string") {
+    return content;
+  }
+
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (part && typeof part === "object" && "text" in part) {
+          return String((part as { text?: unknown }).text ?? "");
+        }
+        return "";
+      })
+      .join("\n")
+      .trim();
+  }
+
+  return "";
+}
+
+function extractOpenAiStylePayload(data: Record<string, unknown>): unknown {
+  const choices = Array.isArray(data.choices) ? data.choices : [];
+  const message = (choices[0] as { message?: Record<string, unknown> } | undefined)?.message;
+
+  if (!message) {
+    return null;
+  }
+
+  const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+  const toolArgs = toolCalls
+    .map((toolCall) => (toolCall as { function?: { arguments?: unknown } }).function?.arguments)
+    .find(Boolean);
+
+  if (toolArgs) {
+    return toolArgs;
+  }
+
+  return extractMessageText(message.content);
 }
 
 async function fetchWithTimeout(
@@ -221,13 +378,13 @@ async function tryMistral(rawText: string): Promise<ParseResult> {
   }
 
   const data = await response.json();
-  const text = data.choices?.[0]?.message?.content;
-  if (!text) {
+  const payload = extractOpenAiStylePayload(data);
+  if (!payload) {
     throw new Error("Mistral returned empty response");
   }
 
   return {
-    result: parseAndValidate(text),
+    result: parseAndValidate(payload),
     usedProvider: "Mistral",
   };
 }
@@ -270,13 +427,13 @@ async function tryOpenRouter(rawText: string): Promise<ParseResult> {
       }
 
       const data = await response.json();
-      const text = data.choices?.[0]?.message?.content;
-      if (!text) {
+      const payload = extractOpenAiStylePayload(data);
+      if (!payload) {
         throw new Error("OpenRouter returned empty response");
       }
 
       return {
-        result: parseAndValidate(text),
+        result: parseAndValidate(payload),
         usedProvider: `OpenRouter (${model})`,
       };
     } catch (error) {
@@ -368,13 +525,13 @@ async function tryGroq(rawText: string): Promise<ParseResult> {
   }
 
   const data = await response.json();
-  const text = data.choices?.[0]?.message?.content;
-  if (!text) {
+  const payload = extractOpenAiStylePayload(data);
+  if (!payload) {
     throw new Error("Groq returned empty response");
   }
 
   return {
-    result: parseAndValidate(text),
+    result: parseAndValidate(payload),
     usedProvider: `Groq (${model})`,
   };
 }
