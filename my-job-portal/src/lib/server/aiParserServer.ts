@@ -5,6 +5,12 @@ import type { ParseResult, ParsedJob } from "@/lib/aiParser";
 
 const systemPrompt =
   "You are a job description parser. Extract structured data from raw job postings.\nAlways return valid JSON only. No explanation, no markdown, no backticks. Just raw JSON.";
+const DEFAULT_GEMINI_MODEL = "gemini-2.0-flash";
+const DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile";
+const DEFAULT_OPENROUTER_MODEL = "openrouter/free";
+const DEFAULT_PROVIDER_TIMEOUT_MS = 20000;
+const OPENROUTER_TIMEOUT_MS = 30000;
+const OPENROUTER_MAX_ATTEMPTS = 2;
 
 function buildUserPrompt(rawText: string): string {
   return `Parse this job description and return ONLY a JSON object with exactly these fields:
@@ -27,6 +33,14 @@ Raw text: ${rawText}`;
 
 function cleanJsonResponse(text: string): string {
   return text.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
+}
+
+function summarizeError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
 }
 
 function parseAndValidate(text: string): ParsedJob {
@@ -57,32 +71,113 @@ async function fetchWithTimeout(
   }
 }
 
+function getConfiguredEnv(name: string): string | null {
+  const value = process.env[name]?.trim();
+
+  if (!value) {
+    return null;
+  }
+
+  // Ignore example placeholder values copied from `.env.example`.
+  if (/^(your_|example|changeme)/i.test(value)) {
+    return null;
+  }
+
+  return value;
+}
+
 function getRequiredEnv(name: string): string {
-  const value = process.env[name];
+  const value = getConfiguredEnv(name);
   if (!value) {
     throw new Error(`${name} is not configured`);
   }
+
   return value;
+}
+
+function getGeminiModel(): string {
+  return getConfiguredEnv("GEMINI_MODEL") ?? DEFAULT_GEMINI_MODEL;
+}
+
+function getGroqModel(): string {
+  return getConfiguredEnv("GROQ_MODEL") ?? DEFAULT_GROQ_MODEL;
+}
+
+function getOpenRouterModel(): string {
+  return getConfiguredEnv("OPENROUTER_MODEL") ?? DEFAULT_OPENROUTER_MODEL;
+}
+
+function isProviderEnabled(name: string): boolean {
+  const flag = process.env[`${name}_ENABLED`]?.trim().toLowerCase();
+
+  if (!flag) {
+    return true;
+  }
+
+  return flag !== "false" && flag !== "0" && flag !== "no";
+}
+
+async function readErrorBody(response: Response): Promise<string> {
+  const text = await response.text().catch(() => "");
+  return text.trim().slice(0, 300);
+}
+
+function shuffleProviders<T>(items: T[]): T[] {
+  const shuffled = [...items];
+
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[randomIndex]] = [
+      shuffled[randomIndex],
+      shuffled[index],
+    ];
+  }
+
+  return shuffled;
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function shouldRetryOpenRouter(error: unknown): boolean {
+  return error instanceof Error && /aborted|timeout/i.test(error.message);
 }
 
 async function tryGemini(rawText: string): Promise<ParseResult> {
   const userPrompt = buildUserPrompt(rawText);
+  const model = getGeminiModel();
   const response = await fetchWithTimeout(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${getRequiredEnv("GEMINI_API_KEY")}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${getRequiredEnv("GEMINI_API_KEY")}`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: `${systemPrompt}\n${userPrompt}` }] }],
+        systemInstruction: {
+          parts: [{ text: systemPrompt }],
+        },
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: userPrompt }],
+          },
+        ],
+        generationConfig: {
+          responseMimeType: "application/json",
+          temperature: 0.2,
+        },
       }),
     },
-    10000,
+    DEFAULT_PROVIDER_TIMEOUT_MS,
   );
 
   if (!response.ok) {
-    throw new Error(`Gemini failed with status ${response.status}`);
+    const details = await readErrorBody(response);
+    throw new Error(
+      `Gemini failed with status ${response.status}${details ? `: ${details}` : ""}`,
+    );
   }
 
   const data = await response.json();
@@ -93,7 +188,7 @@ async function tryGemini(rawText: string): Promise<ParseResult> {
 
   return {
     result: parseAndValidate(text),
-    usedProvider: "Gemini 1.5 Flash",
+    usedProvider: `Gemini (${model})`,
   };
 }
 
@@ -115,11 +210,14 @@ async function tryMistral(rawText: string): Promise<ParseResult> {
         ],
       }),
     },
-    10000,
+    DEFAULT_PROVIDER_TIMEOUT_MS,
   );
 
   if (!response.ok) {
-    throw new Error(`Mistral failed with status ${response.status}`);
+    const details = await readErrorBody(response);
+    throw new Error(
+      `Mistral failed with status ${response.status}${details ? `: ${details}` : ""}`,
+    );
   }
 
   const data = await response.json();
@@ -132,6 +230,70 @@ async function tryMistral(rawText: string): Promise<ParseResult> {
     result: parseAndValidate(text),
     usedProvider: "Mistral",
   };
+}
+
+async function tryOpenRouter(rawText: string): Promise<ParseResult> {
+  const userPrompt = buildUserPrompt(rawText);
+  const model = getOpenRouterModel();
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= OPENROUTER_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetchWithTimeout(
+        "https://openrouter.ai/api/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getRequiredEnv("OPENROUTER_API_KEY")}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+            temperature: 0.2,
+            response_format: {
+              type: "json_object",
+            },
+          }),
+        },
+        OPENROUTER_TIMEOUT_MS,
+      );
+
+      if (!response.ok) {
+        const details = await readErrorBody(response);
+        throw new Error(
+          `OpenRouter failed with status ${response.status}${details ? `: ${details}` : ""}`,
+        );
+      }
+
+      const data = await response.json();
+      const text = data.choices?.[0]?.message?.content;
+      if (!text) {
+        throw new Error("OpenRouter returned empty response");
+      }
+
+      return {
+        result: parseAndValidate(text),
+        usedProvider: `OpenRouter (${model})`,
+      };
+    } catch (error) {
+      lastError = error;
+
+      if (attempt < OPENROUTER_MAX_ATTEMPTS && shouldRetryOpenRouter(error)) {
+        await wait(500 * attempt);
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("OpenRouter failed after retries");
 }
 
 async function tryCohere(rawText: string): Promise<ParseResult> {
@@ -150,11 +312,14 @@ async function tryCohere(rawText: string): Promise<ParseResult> {
         message: userPrompt,
       }),
     },
-    10000,
+    DEFAULT_PROVIDER_TIMEOUT_MS,
   );
 
   if (!response.ok) {
-    throw new Error(`Cohere failed with status ${response.status}`);
+    const details = await readErrorBody(response);
+    throw new Error(
+      `Cohere failed with status ${response.status}${details ? `: ${details}` : ""}`,
+    );
   }
 
   const data = await response.json();
@@ -171,6 +336,7 @@ async function tryCohere(rawText: string): Promise<ParseResult> {
 
 async function tryGroq(rawText: string): Promise<ParseResult> {
   const userPrompt = buildUserPrompt(rawText);
+  const model = getGroqModel();
   const response = await fetchWithTimeout(
     "https://api.groq.com/openai/v1/chat/completions",
     {
@@ -180,18 +346,25 @@ async function tryGroq(rawText: string): Promise<ParseResult> {
         Authorization: `Bearer ${getRequiredEnv("GROQ_API_KEY")}`,
       },
       body: JSON.stringify({
-        model: "llama-3.1-70b-versatile",
+        model,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
+        temperature: 0.2,
+        response_format: {
+          type: "json_object",
+        },
       }),
     },
-    10000,
+    DEFAULT_PROVIDER_TIMEOUT_MS,
   );
 
   if (!response.ok) {
-    throw new Error(`Groq failed with status ${response.status}`);
+    const details = await readErrorBody(response);
+    throw new Error(
+      `Groq failed with status ${response.status}${details ? `: ${details}` : ""}`,
+    );
   }
 
   const data = await response.json();
@@ -202,38 +375,78 @@ async function tryGroq(rawText: string): Promise<ParseResult> {
 
   return {
     result: parseAndValidate(text),
-    usedProvider: "Groq",
+    usedProvider: `Groq (${model})`,
   };
 }
 
 export async function parseJDServer(rawText: string): Promise<ParseResult> {
   const tokens = estimateTokens(rawText);
+  const configuredProviders: Array<{
+    name: string;
+    enabled: boolean;
+    run: () => Promise<ParseResult>;
+  }> = [
+    {
+      name: `Groq (${getGroqModel()})`,
+      enabled:
+        tokens <= 6000 &&
+        isProviderEnabled("GROQ") &&
+        Boolean(getConfiguredEnv("GROQ_API_KEY")),
+      run: () => tryGroq(rawText),
+    },
+    {
+      name: `OpenRouter (${getOpenRouterModel()})`,
+      enabled:
+        isProviderEnabled("OPENROUTER") &&
+        Boolean(getConfiguredEnv("OPENROUTER_API_KEY")),
+      run: () => tryOpenRouter(rawText),
+    },
+    {
+      name: "Mistral",
+      enabled:
+        isProviderEnabled("MISTRAL") &&
+        Boolean(getConfiguredEnv("MISTRAL_API_KEY")),
+      run: () => tryMistral(rawText),
+    },
+    {
+      name: "Cohere",
+      enabled:
+        isProviderEnabled("COHERE") && Boolean(getConfiguredEnv("COHERE_API_KEY")),
+      run: () => tryCohere(rawText),
+    },
+    {
+      name: `Gemini (${getGeminiModel()})`,
+      enabled:
+        isProviderEnabled("GEMINI") && Boolean(getConfiguredEnv("GEMINI_API_KEY")),
+      run: () => tryGemini(rawText),
+    },
+  ];
+  const failures: string[] = [];
+  const groqProvider = configuredProviders.find((provider) =>
+    provider.name.startsWith("Groq "),
+  );
+  const otherEnabledProviders = configuredProviders.filter(
+    (provider) => provider.enabled && !provider.name.startsWith("Groq "),
+  );
+  const enabledProviders = [
+    ...(groqProvider?.enabled ? [groqProvider] : []),
+    ...shuffleProviders(otherEnabledProviders),
+  ];
+  const disabledProviders = configuredProviders.filter((provider) => !provider.enabled);
 
-  try {
-    return await tryGemini(rawText);
-  } catch (error) {
-    console.error("Gemini 1.5 Flash failed", error);
+  for (const provider of disabledProviders) {
+    failures.push(`${provider.name}: not configured`);
   }
 
-  try {
-    return await tryMistral(rawText);
-  } catch (error) {
-    console.error("Mistral failed", error);
-  }
-
-  try {
-    return await tryCohere(rawText);
-  } catch (error) {
-    console.error("Cohere failed", error);
-  }
-
-  if (tokens <= 6000) {
+  for (const provider of enabledProviders) {
     try {
-      return await tryGroq(rawText);
+      return await provider.run();
     } catch (error) {
-      console.error("Groq failed", error);
+      const reason = summarizeError(error);
+      console.error(`${provider.name} failed`, error);
+      failures.push(`${provider.name}: ${reason}`);
     }
   }
 
-  throw new Error("All AI providers failed. Please try again.");
+  throw new Error(`All AI providers failed. ${failures.join(" | ")}`);
 }
