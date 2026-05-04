@@ -1,7 +1,7 @@
-import Registration from '@/components/auth/Registration';
+import { redirect } from 'next/navigation';
 
 export default function RegisterPage() {
-  return <Registration />;
+  redirect('/');
 }
 
 export const metadata = {

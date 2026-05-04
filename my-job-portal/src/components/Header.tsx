@@ -17,12 +17,6 @@ export default function Header() {
           >
             Jobs
           </Link>
-          <Link
-            href="/admin"
-            className="rounded-md bg-indigo-600 px-3 py-1.5 text-white shadow-sm transition hover:bg-indigo-700"
-          >
-            Admin
-          </Link>
         </nav>
       </div>
     </header>

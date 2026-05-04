@@ -1,6 +1,6 @@
 "use client";
 
-import type { JobType } from "@/lib/mockJobs";
+import type { JobType } from "@/lib/jobs";
 
 export type FilterType = "All" | JobType;
 

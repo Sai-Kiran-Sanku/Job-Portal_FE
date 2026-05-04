@@ -1,6 +1,6 @@
 import Link from "next/link";
-import type { Job, JobType } from "@/lib/mockJobs";
-import { daysSincePosted, formatSalaryRange, isNewJob } from "@/lib/mockJobs";
+import type { Job, JobType } from "@/lib/jobs";
+import { daysSincePosted, formatSalaryRange, isNewJob } from "@/lib/jobs";
 
 function initials(company: string) {
   const parts = company.trim().split(/\s+/).filter(Boolean);

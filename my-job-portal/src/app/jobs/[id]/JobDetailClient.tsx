@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useJobs } from "@/context/JobsContext";
-import type { JobType } from "@/lib/mockJobs";
-import { daysSincePosted, formatSalaryRange, isNewJob } from "@/lib/mockJobs";
+import type { JobType } from "@/lib/jobs";
+import { daysSincePosted, formatSalaryRange, isNewJob } from "@/lib/jobs";
 
 function typeBadgeClasses(jobType: JobType): string {
   switch (jobType) {
@@ -29,10 +29,33 @@ function initials(company: string) {
 }
 
 export default function JobDetailClient({ id }: { id: string }) {
-  const { getJob } = useJobs();
+  const { getJob, loading, error } = useJobs();
   const job = getJob(id);
 
-  if (!job) {
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-20 text-center text-gray-500">
+        Loading job...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-20 text-center">
+        <h1 className="text-xl font-semibold text-gray-900">Unable to load job</h1>
+        <p className="mt-2 text-gray-600">{error}</p>
+        <Link
+          href="/"
+          className="mt-6 inline-block rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+        >
+          Back to jobs
+        </Link>
+      </div>
+    );
+  }
+
+  if (!job || !job.is_active) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-20 text-center">
         <h1 className="text-xl font-semibold text-gray-900">Job not found</h1>
@@ -60,7 +83,7 @@ export default function JobDetailClient({ id }: { id: string }) {
             href="/"
             className="inline-flex items-center text-sm font-medium text-indigo-600 hover:text-indigo-800"
           >
-            ← Back to all jobs
+            {"<-"} Back to all jobs
           </Link>
         </div>
       </div>
@@ -70,7 +93,7 @@ export default function JobDetailClient({ id }: { id: string }) {
           <div
             className="flex size-14 shrink-0 items-center justify-center rounded-xl text-lg font-bold text-white shadow-md"
             style={{
-              background: `linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)`,
+              background: "linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)",
             }}
           >
             {initials(job.company)}
@@ -78,7 +101,7 @@ export default function JobDetailClient({ id }: { id: string }) {
           <div className="min-w-0 flex-1">
             <p className="text-sm text-gray-600">
               {job.company}
-              <span className="text-gray-400"> · </span>
+              <span className="text-gray-400"> . </span>
               {job.location}
             </p>
             <h1 className="mt-1 font-bold tracking-tight text-gray-900 sm:text-3xl">
@@ -115,7 +138,7 @@ export default function JobDetailClient({ id }: { id: string }) {
 
         <div className="mt-10 max-w-none space-y-4">
           {paras.map((p, i) => (
-            <p key={i} className="text-gray-700 leading-relaxed">
+            <p key={i} className="leading-relaxed text-gray-700">
               {p}
             </p>
           ))}
@@ -138,15 +161,6 @@ export default function JobDetailClient({ id }: { id: string }) {
             ))}
           </ul>
         </section>
-
-        <div className="mt-10 flex flex-wrap gap-3">
-          <button
-            type="button"
-            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
-          >
-            Share this job
-          </button>
-        </div>
       </article>
 
       <div className="fixed bottom-0 left-0 right-0 border-t border-gray-200 bg-white/95 p-4 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] backdrop-blur-sm">

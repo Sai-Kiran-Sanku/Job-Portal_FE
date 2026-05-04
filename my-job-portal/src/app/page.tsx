@@ -23,14 +23,14 @@ function EmptyState() {
       </svg>
       <h2 className="text-lg font-semibold text-gray-900">No jobs found</h2>
       <p className="mt-1 max-w-sm text-sm text-gray-500">
-        Try a different search or filter—or check the Admin panel to add roles.
+        Try a different search or filter and check back soon for new openings.
       </p>
     </div>
   );
 }
 
 export default function HomePage() {
-  const { jobs } = useJobs();
+  const { jobs, loading, error } = useJobs();
   const [search, setSearch] = useState("");
   const [jobType, setJobType] = useState<FilterType>("All");
 
@@ -39,8 +39,7 @@ export default function HomePage() {
     const q = search.trim().toLowerCase();
     if (q) {
       list = list.filter(
-        (j) =>
-          j.title.toLowerCase().includes(q) || j.company.toLowerCase().includes(q),
+        (j) => j.title.toLowerCase().includes(q) || j.company.toLowerCase().includes(q),
       );
     }
     if (jobType !== "All") {
@@ -64,7 +63,15 @@ export default function HomePage() {
           Showing {filtered.length} job{filtered.length === 1 ? "" : "s"}
         </p>
 
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div className="mt-8 rounded-2xl border border-gray-200 bg-white px-6 py-16 text-center text-gray-500 shadow-sm">
+            Loading jobs...
+          </div>
+        ) : error ? (
+          <div className="mt-8 rounded-2xl border border-red-200 bg-red-50 px-6 py-16 text-center text-red-700">
+            {error}
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="mt-8">
             <EmptyState />
           </div>

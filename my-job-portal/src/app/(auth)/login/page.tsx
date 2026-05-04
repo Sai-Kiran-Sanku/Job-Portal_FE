@@ -1,7 +1,7 @@
-import SignIn from '@/components/auth/SignIn';
+import { redirect } from 'next/navigation';
 
 export default function LoginPage() {
-  return <SignIn />;
+  redirect('/');
 }
 
 export const metadata = {
