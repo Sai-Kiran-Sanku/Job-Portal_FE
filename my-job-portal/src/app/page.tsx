@@ -51,7 +51,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen animate-page-in bg-[#f9fafb]">
       <Header />
-      <main className="mx-auto max-w-6xl px-4 py-8">
+      <main className="mx-auto max-w-7xl px-4 py-8 xl:px-6">
         <JobFilters
           search={search}
           onSearchChange={setSearch}
@@ -76,7 +76,7 @@ export default function HomePage() {
             <EmptyState />
           </div>
         ) : (
-          <ul className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2">
+          <ul className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
             {filtered.map((job) => (
               <li key={job.id}>
                 <JobCard job={job} />

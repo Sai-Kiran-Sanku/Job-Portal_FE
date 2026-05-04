@@ -12,6 +12,8 @@ import axios from "axios";
 import apiClient, { API_ENDPOINTS } from "@/lib/api";
 import type { Job } from "@/lib/jobs";
 
+const JOBS_PAGE_SIZE = 250;
+
 type JobsContextValue = {
   jobs: Job[];
   loading: boolean;
@@ -26,6 +28,25 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function fetchAllJobs(includeInactive: boolean): Promise<Job[]> {
+  const jobs: Job[] = [];
+  let skip = 0;
+
+  while (true) {
+    const response = await apiClient.get<Job[]>(
+      `${API_ENDPOINTS.JOBS.LIST}?include_inactive=${includeInactive}&skip=${skip}&limit=${JOBS_PAGE_SIZE}`,
+    );
+    const batch = response.data;
+    jobs.push(...batch);
+
+    if (batch.length < JOBS_PAGE_SIZE) {
+      return jobs;
+    }
+
+    skip += JOBS_PAGE_SIZE;
+  }
+}
+
 export function JobsProvider({ children }: { children: ReactNode }) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,9 +59,7 @@ export function JobsProvider({ children }: { children: ReactNode }) {
       let response;
 
       try {
-        response = await apiClient.get<Job[]>(
-          `${API_ENDPOINTS.JOBS.LIST}?include_inactive=true`,
-        );
+        response = await fetchAllJobs(true);
       } catch (err) {
         if (!axios.isAxiosError(err) || err.code !== "ECONNABORTED") {
           throw err;
@@ -48,12 +67,10 @@ export function JobsProvider({ children }: { children: ReactNode }) {
 
         // Render can take a bit longer on cold start, so retry once after a short pause.
         await sleep(1500);
-        response = await apiClient.get<Job[]>(
-          `${API_ENDPOINTS.JOBS.LIST}?include_inactive=true`,
-        );
+        response = await fetchAllJobs(true);
       }
 
-      setJobs(response.data);
+      setJobs(response);
     } catch (err) {
       console.error("Failed to fetch jobs", err);
       if (axios.isAxiosError(err) && err.code === "ECONNABORTED") {
